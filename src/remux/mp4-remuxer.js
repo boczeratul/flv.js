@@ -271,6 +271,8 @@ class MP4Remuxer {
         }
 
         let mp4Samples = [];
+        let accumulatedSample = 0;
+        let accumulatedRef = 0;
 
         // Correct dts for each sample, and calculate sample duration. Then output to mp4Samples
         for (let i = 0; i < samples.length; i++) {
@@ -296,16 +298,19 @@ class MP4Remuxer {
                 }
             }
 
+            accumulatedSample += sampleDuration;
+            accumulatedRef += refSampleDuration;
+
             let needFillSilentFrames = false;
             let silentFrames = null;
 
             // Silent frame generation, if large timestamp gap detected && config.fixAudioTimestampGap
-            if (sampleDuration > refSampleDuration * 1.5 && this._audioMeta.codec !== 'mp3' && this._fillAudioTimestampGap && !Browser.safari) {
+            if (accumulatedSample > accumulatedRef + 50 /* just some threshold */ && this._audioMeta.codec !== 'mp3' && this._fillAudioTimestampGap && !Browser.safari) {
                 // We need to insert silent frames to fill timestamp gap
                 needFillSilentFrames = true;
-                let delta = Math.abs(sampleDuration - refSampleDuration);
+                let delta = Math.abs(accumulatedSample - accumulatedRef);
                 let frameCount = Math.ceil(delta / refSampleDuration);
-                let currentDts = dts + refSampleDuration;  // Notice: in float
+                let currentDts = dts + refSampleDuration + delta;  // Notice: in float
 
                 Log.w(this.TAG, 'Large audio timestamp gap detected, may cause AV sync to drift. ' +
                                 'Silent frames will be generated to avoid unsync.\n' +
@@ -357,7 +362,7 @@ class MP4Remuxer {
                 // });
 
                 // Set correct sample duration for current frame
-                sampleDuration = Math.round(refSampleDuration);
+                sampleDuration += delta;
             }
 
             mp4Samples.push({
